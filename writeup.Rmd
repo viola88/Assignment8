@@ -1,0 +1,88 @@
+---
+title: "How well did you perform your exercise?"
+author: "Viola"
+date: "18. Februar 2015"
+output: html_document
+---
+
+Introduction
+---
+
+Tasks like finding out, how many steps you were running etc. is easy. The harder question is to find out how well you were performing an exercise. This assignment is about finding out exactly that. The underlying data is taken from  http://groupware.les.inf.puc-rio.br/har and contains data of almost 20,000 workouts for training a model as well as data of 20 workouts for testing this model. The task is to grading how well the 20 test workouts performed: A,B,C,D or E.
+
+Read in data
+---
+
+```{r,echo=TRUE}
+library(randomForest)
+library(caret)
+library(e1071)
+training <- read.table("pml-training.csv", header = TRUE, sep = ",", dec = ".", fill = TRUE)
+evaluating <- read.table("pml-testing.csv", header = TRUE, sep = ",", dec = ".", fill = TRUE)
+```
+
+Data Preprocessing
+---
+
+There appear to be many NA's in quite a lot of data points in training data (1287472, see below). We will delete those data points as they are not representative enough. Moreover, there are some columns, which only consists of NA's in the evaluating data set. We also delete these data points as well as the user id. 
+
+In total we have reduced the number of columns in the data sets from 160 to 58. We will only use these 58 columns for the model building.
+
+```{r,echo=TRUE}
+sum(is.na(training))
+for (i in 159:1){
+  if (sum(is.na(training[[i]]))>10000){    
+    training <- training[,-i]
+    evaluating <- evaluating[,-i]
+  }
+}
+for (j in 93:1){
+  if (sum(is.na(evaluating[[j]]))>19){    
+    training <- training[,-j]
+    evaluating <- evaluating[,-j]
+  }
+}
+training <- training[,-1]
+evaluating <- evaluating[,-1]
+evaluating <- evaluating[,-ncol(evaluating)]
+evaluating <- evaluating[,-5]
+evaluating <- evaluating[,-4]
+training <- training[,-5]
+training <- training[,-4]
+```
+
+Model building
+---
+
+For the model we need a classification algorithm. From the lectures I learned that the random forest seems to be most promising.
+
+There are 20 workouts for testing. Before, there are 19622 workouts in the training group. We will build a model and test it on the training group. For this, we will use cross validation, that is we will divide the training group into a test group and a training group and this about five times (the order shouldn't matter). Each time the training group will consist of about 80 % of the training data and the rest 20 % are used for testing. The training groups are created by randomly addressing numbers in between one to five to each row. Then the workouts corresponding to each number are once taken as a test group and the respective other rows as training group. The results of the model are then stored in a vector called predicteddata, where we can compare it to the original graded values in the vector referencedata.
+
+```{r,echo=TRUE}
+k <- 5
+crossvalidation <- 1:k
+predicteddata <- data.frame()
+referencedata <- data.frame()
+training$id <- sample(1:k,nrow(training),replace=TRUE)
+for (i in 1:k){
+  trainingset <- subset(training, id %in% crossvalidation[-i])
+  testingset <- subset(training,id %in% c(i))
+  trainingset <- trainingset[,-ncol(trainingset)]
+  testingset <- testingset[,-ncol(testingset)]
+  model <- randomForest(trainingset$classe ~., data=trainingset,ntree=100)
+  temp <- as.data.frame(predict(model,testingset[,-(ncol(testingset))]))
+  predicteddata <- rbind(predicteddata,temp)
+  referencedata <- rbind(referencedata,as.data.frame(testingset[,ncol(testingset)]))
+}
+```
+
+Out of Sample Error 
+---
+
+As a result from comparing the predicted data with the reference data, we have the following confusion Matrix
+```{r,echo=TRUE}
+confusionMatrix(predicteddata[,1],referencedata[,1])
+result <- as.data.frame(predict(model,evaluating))
+```
+We can conlude that the accuracy is very close to one, that is we are expecting good results.
+
